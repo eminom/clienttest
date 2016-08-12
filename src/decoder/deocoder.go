@@ -3,6 +3,7 @@
 package Decoder
 
 import (
+    "encoding/binary"
     "encoding/json"
     "reflect"
     "fmt"
@@ -48,6 +49,19 @@ func (d*Decoder)Register(msg interface{}, msgHandler MsgHandler){
         msgHandler,
     }
 }
+
+func (_*Decoder)Encode(m interface{})[]byte{
+    msgID := reflect.TypeOf(m).Elem().Name()
+    pac := map[string]interface{}{msgID:m}
+    data, _ := json.Marshal(pac)
+    buf1 := []byte(data)
+    outBuff := make([]byte, 2 + len(buf1))
+    binary.BigEndian.PutUint16(outBuff, uint16(len(buf1)))
+    copy(outBuff[2:], buf1)
+    return outBuff
+}
+
+
 
 func (d*Decoder)Decode(buf[]byte)interface{} {
     var m map[string]json.RawMessage

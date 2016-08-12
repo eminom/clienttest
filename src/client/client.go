@@ -1,11 +1,9 @@
 package main
 
 import (
-    "encoding/json"
     "encoding/binary"
     "net"
 	"fmt"
-    "reflect"
     "time"
     "os"
     "os/signal"
@@ -48,20 +46,10 @@ func CreateClientPlayer()*ClientPlayer{
     }
 }
 
-func DoMarshal(m interface{})[]byte{
-    msgID := reflect.TypeOf(m).Elem().Name()
-    pac := map[string]interface{}{msgID:m}
-    data, _ := json.Marshal(pac)
-    buf1 := []byte(data)
-    outBuff := make([]byte, 2 + len(buf1))
-    binary.BigEndian.PutUint16(outBuff, uint16(len(buf1)))
-    copy(outBuff[2:], buf1)
-    return outBuff
-}
 
 //~ This is the sample you need to read. 
 //~ Send the raw buff to server.
-func (c*ClientPlayer)SendToHost(m interface{}) {
+//func (c*ClientPlayer)SendToHost(m interface{}) {
     /*
     data := []byte(`{
         "Hello": {
@@ -73,18 +61,19 @@ func (c*ClientPlayer)SendToHost(m interface{}) {
     copy(m[2:], data)
     c.conn.Write(m)
     */
-    c.conn.Write(DoMarshal(m))
+    // c.conn.Write(DoMarshal(m))
+//}
+
+func (c*ClientPlayer) WriteToHost(bytes[]byte) (int, error) {
+    return c.conn.Write(bytes)
 }
 
-func (c*ClientPlayer)WriteToHost(bytes[]byte){
-    c.conn.Write(bytes)
-}
-
-func (c*ClientPlayer)ReadFromHost()[]byte{
+func (c*ClientPlayer) ReadFromHost()[]byte{
     lbuff := make([]byte, 2)
     _, err := c.conn.Read(lbuff)
-    if err != nil {
-        panic(err)
+    if err != nil {  //经试验证明, 如果在别的地方Close, 那么这里就会出一个error(吃掉它)
+        return nil
+        //panic(err)
     }
     icome := binary.BigEndian.Uint16(lbuff)
     inbuf := make([]byte, icome)
@@ -99,38 +88,80 @@ func (c*ClientPlayer) Close() {
     c.conn.Close()
 }
 
-//~ And the length is already written.(Fixed)
-func clientLoop(msg chan[]byte, outbytes chan[] byte, closeSig chan bool, wg *sync.WaitGroup){
+//~ And go.
+func (lcp*ClientPlayer) writeProc(msg chan[]byte, wg *sync.WaitGroup){
     defer wg.Done()
     wg.Add(1)
-    lcp := CreateClientPlayer()
-    defer lcp.Close()
-    A100:for {
+    /*A100:for {
         select {
-        case m:= <-msg:
-            lcp.WriteToHost(m)
-            inbuf := lcp.ReadFromHost()
-            outbytes <- inbuf
-        case <- closeSig:
+        case outGoingMsg:= <- msg:
+            lcp.WriteToHost(outGoingMsg)
+        case <-closeSig:
             break A100
         }
+    }*/
+    for outGoingMsg := range msg {
+        if nil == outGoingMsg {
+            fmt.Println("Out-going-msg is nil now !")
+            break
+        }
+        _, err := lcp.WriteToHost(outGoingMsg)
+        if err != nil {
+            fmt.Println("Writing failed !")
+            break
+        }
+        fmt.Println("Msg sent.")
     }
-    fmt.Println("goroutine finished")
+    fmt.Println("End of writeProc")
 }
+
+func (lcp*ClientPlayer) readProc(msg chan[]byte, wg *sync.WaitGroup){ //, closeSig chan bool){
+    defer wg.Done()
+    wg.Add(1)
+    for {
+        inBuff := lcp.ReadFromHost()
+        if inBuff!=nil {
+            msg <- inBuff //` Assume that it is big enough
+        } else {
+            fmt.Println("Read nil !")
+            break
+        }
+    }
+}
+
+//~ And the length is already written.(Fixed)
+// func clientLoop(msg chan[]byte, outbytes chan[] byte, closeSig chan bool, wg *sync.WaitGroup){
+//     defer wg.Done()
+//     wg.Add(1)
+//     lcp := CreateClientPlayer()
+//     defer lcp.Close()
+//     A100:for {
+//         select {
+//         case m:= <-msg:
+//             lcp.WriteToHost(m)
+//             inbuf := lcp.ReadFromHost()
+//             outbytes <- inbuf
+//         case <- closeSig:
+//             break A100
+//         }
+//     }
+//     fmt.Println("goroutine finished")
+// }
 
 func main() {
     outMsgBuff := make(chan[]byte, 2048)
     inMsgBuff  := make(chan[]byte, 2048)
-    closeSig   := make(chan bool)
+    // closeSig   := make(chan bool)
     decoder    := ldecoder.CreateDecoder()
     var waitgroup sync.WaitGroup //~ Do not pass it by value. 
-    go clientLoop(outMsgBuff, inMsgBuff, closeSig, &waitgroup)
-
+    cp := CreateClientPlayer()
+    //go clientLoop(outMsgBuff, inMsgBuff, closeSig, &waitgroup)
+    go cp.writeProc(outMsgBuff, &waitgroup)
+    go cp.readProc(inMsgBuff,   &waitgroup)
     //~ This is the wrapper you need.
     SendToHost := func(m interface{}){
-        outMsgBuff <- DoMarshal(m)
+        outMsgBuff <- decoder.Encode(m)
     }
-
     // SendToHost(&lmsg.Hello{"clienttest"})
     // The master loop
     tick := time.Tick(time.Second * 1)
@@ -139,16 +170,19 @@ func main() {
     A100:for{
         select {
         case <- tick:
+            fmt.Println("One more out >>")
             SendToHost(&lmsg.Hello{"right"})
         case <- ctrlbreak:
             fmt.Println("Do you need to break ??")
-            closeSig <- true
+            // closeSig <- true
             break A100
         case inBuff := <- inMsgBuff:
             fromSvr := decoder.Decode(inBuff)
             decoder.Dispatch(fromSvr)
         }
     }
+    cp.Close()
+    close(outMsgBuff)//~ out关闭, range直接退出. (都不会去整一个nil来糊弄玩家)
     waitgroup.Wait()
     fmt.Println("done")
 }
