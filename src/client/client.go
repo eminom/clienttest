@@ -9,7 +9,7 @@ import (
     "os/signal"
     "sync"
     ldecoder "Decoder"
-    lmsg     "Msg"
+    lmsg     "msg"
 )
 
 /*
@@ -47,7 +47,7 @@ func CreateClientPlayer()*ClientPlayer{
 }
 
 
-//~ This is the sample you need to read. 
+//~ This is the sample you need to read.
 //~ Send the raw buff to server.
 //func (c*ClientPlayer)SendToHost(m interface{}) {
     /*
@@ -153,7 +153,7 @@ func main() {
     inMsgBuff  := make(chan[]byte, 2048)
     // closeSig   := make(chan bool)
     decoder    := ldecoder.CreateDecoder()
-    var waitgroup sync.WaitGroup //~ Do not pass it by value. 
+    var waitgroup sync.WaitGroup //~ Do not pass it by value.
     cp := CreateClientPlayer()
     //go clientLoop(outMsgBuff, inMsgBuff, closeSig, &waitgroup)
     go cp.writeProc(outMsgBuff, &waitgroup)

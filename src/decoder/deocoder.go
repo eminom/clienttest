@@ -1,6 +1,6 @@
 
 
-package Decoder
+package decoder
 
 import (
     "encoding/binary"
@@ -8,7 +8,7 @@ import (
     "reflect"
     "fmt"
     "errors"
-    "Msg"
+    "msg"
 )
 
 type Decoder struct {
@@ -29,8 +29,8 @@ func CreateDecoder()*Decoder{
 }
 
 func (d*Decoder)init()*Decoder{
-    d.Register(&Msg.Hello{}, ProcessHello)
-    d.Register(&Msg.Gate{},  ProcessGate)
+    d.Register(&msg.Hello{}, ProcessHello)
+    d.Register(&msg.Gate{},  ProcessGate)
     return d
 }
 
@@ -76,13 +76,13 @@ func (d*Decoder)Decode(buf[]byte)interface{} {
         i, ok := d.proto[msgID]
         if !ok {
             panic(
-                fmt.Errorf("message %v not registered", 
+                fmt.Errorf("message %v not registered",
                     msgID),
             )
         }
         msg := reflect.New(i.typeInfo.Elem()).Interface()
         json.Unmarshal(data, msg)
-        return msg 
+        return msg
     }
     panic("bug")
 }
